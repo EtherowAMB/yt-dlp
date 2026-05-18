@@ -386,25 +386,90 @@ class TikTokBaseIE(InfoExtractor):
         return subtitles
 
     def _custom_save_json(self, video_info):
-        # A do-nothing method for future processing logic
-        pass
-        
-        # Save json to csv file
         import os
+        import re
         import csv
         import json
-        import re
+        import copy
+        from datetime import datetime
+
+        # 获取命令行参数，用户是否开启了 --flat-playlist
+        is_flat_mode = self.get_param('extract_flat')
+        # 如果 formats 是 None，说明这是 yt-dlp 的浅层解析
+        has_formats = video_info.get('formats') is not None
         
-        channel = video_info.get('channel') or video_info.get('uploader') or 'unknown_channel'
+        # 防重复逻辑
+        if not is_flat_mode and not has_formats:
+            return
+
+        # GUI动态传参支持
+        # 通过 yt-dlp 的 --extractor-args 动态获取开关状态
+        # 例：--extractor-args "tiktok:csv=True;jsonl=False"
+        # 默认两者都为 True
+        arg_jsonl = self._configuration_arg('jsonl', default=['True'])[0]
+        arg_csv = self._configuration_arg('csv', default=['True'])[0]
+        
+        OUTPUT_JSONL = str(arg_jsonl).lower() == 'true'
+        OUTPUT_CSV = str(arg_csv).lower() == 'true'
+        # --------------------------------------------------
+
+        # 为了不破坏 yt-dlp 本身的运行逻辑，拷贝一份数据用来做自定义处理
+        modified_info = copy.deepcopy(video_info)
+        
+        # 对 JSON 内容进行自定义修改
+        # 去掉某个字段: 使用 pop 方法。第二个参数 None 保证了即使该字段不存在也不会报错
+        # modified_info.pop('formats', None)  # 去掉 formats 字段
+        # modified_info.pop('http_headers', None) # 去掉请求头
+        # modified_info.pop('subtitles', None)    # 去掉字幕信息
+        
+        # 查找并替换: 比如替换 description 中的某些特定词汇
+        # if 'description' in modified_info and modified_info['description']:
+            # 将描述里的 "旧词" 替换为 "新词"
+            # modified_info['description'] = modified_info['description'].replace('旧词', '新词')
+        
+        # 新增字段: 直接赋值即可
+        # modified_info['my_custom_tag'] = "TikTok_Export"
+
+        # 转换类型/格式化: 把时间戳 (timestamp) 转换成可读的日期格式
+        if 'timestamp' in modified_info and modified_info['timestamp']:
+            # 将 1680000000 转为 "2023-03-28 12:00:00"
+            dt_object = datetime.fromtimestamp(modified_info['timestamp'])
+            modified_info['human_readable_time'] = dt_object.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 安全处理频道名，准备输出
+        channel = modified_info.get('channel') or modified_info.get('uploader') or 'unknown_channel'
+        # 过滤掉文件名中不能出现的字符
         channel = re.sub(r'[\\/*?:"<>|]', "", channel)
-        filename = f"{channel}.csv"
         
-        file_exists = os.path.isfile(filename)
-        with open(filename, 'a', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(['video_info_json'])
-            writer.writerow([json.dumps(video_info, ensure_ascii=False)])
+        # 方案 A：写入 JSONL
+        if OUTPUT_JSONL:
+            jsonl_filename = f"{channel}.jsonl"
+            with open(jsonl_filename, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(modified_info, ensure_ascii=False) + '\n')
+                
+        # 方案 B：写入 CSV
+        if OUTPUT_CSV:
+            csv_filename = f"{channel}.csv"
+            file_exists = os.path.isfile(csv_filename)
+            with open(csv_filename, 'a', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                # 第一行的表头 “video_info_json” 写入逻辑
+                if not file_exists:
+                    writer.writerow(['video_info_json'])
+                # 写入修改后的字典，ensure_ascii=False 确保不转义中文和emoji
+                writer.writerow([json.dumps(modified_info, ensure_ascii=False)])
+
+            csv_filename_humanRead = f"{channel}_humanRead.csv"
+            file_exists_humanRead = os.path.isfile(csv_filename_humanRead)
+            # 解决多国语言、Emoji和中文乱码。将 'utf-8' 更改为 'utf-8-sig'
+            # 这会在文件开头加上 UTF-8 BOM，让 Excel 和其他程序都能自动并正确地识别编码格式
+            with open(csv_filename_humanRead, 'a', encoding='utf-8-sig', newline='') as f_humanRead:
+                writer_humanRead = csv.writer(f_humanRead)
+                # 第一行的表头 “video_info_json” 写入逻辑
+                if not file_exists_humanRead:
+                    writer_humanRead.writerow(['video_info_json'])
+                # 写入修改后的字典，ensure_ascii=False 确保不转义中文和emoji
+                writer_humanRead.writerow([json.dumps(modified_info, ensure_ascii=False)])        
 
     def _parse_url_key(self, url_key):
         format_id, codec, res, bitrate = self._search_regex(
