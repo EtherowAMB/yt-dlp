@@ -393,13 +393,15 @@ class TikTokBaseIE(InfoExtractor):
         import copy
         from datetime import datetime
 
-        # 获取命令行参数，用户是否开启了 --flat-playlist
+        # 获取命令行参数，用户是否显式开启了 --flat-playlist (此时值为 True)
+        # yt-dlp 默认值为 'in_playlist'
         is_flat_mode = self.get_param('extract_flat')
-        # 如果 formats 是 None，说明这是 yt-dlp 的浅层解析
         has_formats = video_info.get('formats') is not None
         
-        # 防重复逻辑
-        if not is_flat_mode and not has_formats:
+        # 防重复逻辑：
+        # 如果当前是简略信息 (formats为None)，且用户没有显式要求纯简略模式 (is_flat_mode 不是 True)
+        # 说明这只是播放列表解析阶段的过渡信息，后续还会解析完整版，所以直接跳过不保存。
+        if not has_formats and is_flat_mode is not True:
             return
 
         # GUI动态传参支持
