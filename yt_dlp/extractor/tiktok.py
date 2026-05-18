@@ -393,24 +393,20 @@ class TikTokBaseIE(InfoExtractor):
         import copy
         from datetime import datetime
 
-        # 获取命令行参数，用户是否显式开启了 --flat-playlist (此时值为 True)
-        # yt-dlp 默认值为 'in_playlist'
-        is_flat_mode = self.get_param('extract_flat')
+        # 防重复核心逻辑：多判断一层固定的所有可能状态，确保万无一失
         has_formats = video_info.get('formats') is not None
+        extract_flat = self.get_param('extract_flat')
         
-        # 防重复逻辑：
-        # 如果当前是简略信息 (formats为None)，且用户没有显式要求纯简略模式 (is_flat_mode 不是 True)
-        # 说明这只是播放列表解析阶段的过渡信息，后续还会解析完整版，所以直接跳过不保存。
-        if not has_formats and is_flat_mode is not True:
+        # yt-dlp 的 extract_flat 固定只有几种状态：
+        # - False 或 None: 默认全量爬取（会先出一次无 formats 的简略版，再出有 formats 的完整版）
+        # - True, 'in_playlist', 'discard_in_playlist': 明确要求只要简略版，不需要爬取深层视频
+        # 只要是没有 formats，且 extract_flat 不在明确要求浅层提取的状态中，统统丢弃
+        if not has_formats and extract_flat in (False, None):
             return
 
-        # GUI动态传参支持
-        # 通过 yt-dlp 的 --extractor-args 动态获取开关状态
-        # 例：--extractor-args "tiktok:csv=True;jsonl=False"
-        # 默认两者都为 True
-        arg_jsonl = self._configuration_arg('jsonl', default=['True'], ie_key=TikTokIE)[0]
-        arg_csv = self._configuration_arg('csv', default=['True'], ie_key=TikTokIE)[0]
-        
+        # GUI动态传参支持（不加 ie_key 是最规范的做法，yt-dlp 的继承引擎会自动分发）
+        arg_jsonl = self._configuration_arg('jsonl', default=['True'])[0]
+        arg_csv = self._configuration_arg('csv', default=['True'])[0]
         OUTPUT_JSONL = str(arg_jsonl).lower() == 'true'
         OUTPUT_CSV = str(arg_csv).lower() == 'true'
         # --------------------------------------------------
