@@ -408,8 +408,8 @@ class TikTokBaseIE(InfoExtractor):
         # 通过 yt-dlp 的 --extractor-args 动态获取开关状态
         # 例：--extractor-args "tiktok:csv=True;jsonl=False"
         # 默认两者都为 True
-        arg_jsonl = self._configuration_arg('jsonl', default=['True'])[0]
-        arg_csv = self._configuration_arg('csv', default=['True'])[0]
+        arg_jsonl = self._configuration_arg('jsonl', default=['True'], ie_key=TikTokIE)[0]
+        arg_csv = self._configuration_arg('csv', default=['True'], ie_key=TikTokIE)[0]
         
         OUTPUT_JSONL = str(arg_jsonl).lower() == 'true'
         OUTPUT_CSV = str(arg_csv).lower() == 'true'
