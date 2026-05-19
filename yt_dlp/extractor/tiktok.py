@@ -408,8 +408,8 @@ class TikTokBaseIE(InfoExtractor):
         extract_flat = self.get_param('extract_flat')
         
         # yt-dlp 在不同参数下，extract_flat 可能的值有 True, False, None, 'in_playlist', 'discard_in_playlist'
-        # 只有明确使用了 --flat-playlist，此参数才会严格等于 True。其他情况（如默认的 'in_playlist' 或是 False），主程序随后必定会去抓取完整 formats。
-        is_flat_playlist_mode = (extract_flat is True)
+        # 命令行传入 --flat-playlist 对应的值是字符串 'in_playlist'
+        is_flat_playlist_mode = extract_flat in (True, 'in_playlist')
         # 如果当前是没有 formats 的简略版，且用户并没有要求全盘 flat，统统丢弃，静静等待后面的完整版
         if not has_formats and not is_flat_playlist_mode:
             return
