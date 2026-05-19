@@ -393,24 +393,34 @@ class TikTokBaseIE(InfoExtractor):
         import copy
         from datetime import datetime
 
+        video_id = video_info.get('id')
+        if not video_id:
+            return
+
+        # 防重，类级别的内存记录。无论 yt-dlp 底层怎么重试或 fallback，保证单次执行中，一个ID只输出一次
+        if not hasattr(TikTokBaseIE, '_CUSTOM_WRITTEN_IDS'):
+            TikTokBaseIE._CUSTOM_WRITTEN_IDS = set()
+        
+        if video_id in TikTokBaseIE._CUSTOM_WRITTEN_IDS:
+            return
         # 防重复核心逻辑：多判断一层固定的所有可能状态，确保万无一失
         has_formats = video_info.get('formats') is not None
         extract_flat = self.get_param('extract_flat')
         
         # yt-dlp 在不同参数下，extract_flat 可能的值有 True, False, None, 'in_playlist', 'discard_in_playlist'
-        # - False 或 None: 默认全量爬取（会先出一次无 formats 的简略版，再出有 formats 的完整版）
-        # - True, 'in_playlist', 'discard_in_playlist': 明确要求只要简略版，不需要爬取深层视频
-        # 只要是没有 formats，且 extract_flat 不在明确要求浅层提取的状态中，统统丢弃
-        is_shallow_run = extract_flat in (True, 'in_playlist', 'discard_in_playlist') 
-        if not has_formats and not is_shallow_run:
+        # 只有明确使用了 --flat-playlist，此参数才会严格等于 True。其他情况（如默认的 'in_playlist' 或是 False），主程序随后必定会去抓取完整 formats。
+        is_flat_playlist_mode = (extract_flat is True)
+        # 如果当前是没有 formats 的简略版，且用户并没有要求全盘 flat，统统丢弃，静静等待后面的完整版
+        if not has_formats and not is_flat_playlist_mode:
             return
 
         # 主动检测 archive (下载历史)，实现 break-on-existing 不漏写。
         # 这里提取出 ID 并且主动向外部请求判断，如果已经被记录在历史中，则阻拦输出操作。
         if getattr(self, '_downloader', None):
             info_dict_for_archive = {
-                'id': video_info.get('id'),
+                'id': video_id,
                 'extractor_key': TikTokIE.ie_key(),
+                'ie_key': TikTokIE.ie_key(),
             }
             if self._downloader.in_download_archive(info_dict_for_archive):
                 return
@@ -425,6 +435,10 @@ class TikTokBaseIE(InfoExtractor):
         if not OUTPUT_JSONL and not OUTPUT_CSV:
             return
         
+        # 走到这里说明：它是符合条件的、不在下载历史里的全新视频。
+        # 立即将其加入内存黑名单，防止同一执行周期内的任何重试导致的重复写入。
+        TikTokBaseIE._CUSTOM_WRITTEN_IDS.add(video_id)
+
         # 为了不破坏 yt-dlp 本身的运行逻辑，拷贝一份数据用来做自定义处理
         modified_info = copy.deepcopy(video_info)
         
@@ -444,10 +458,12 @@ class TikTokBaseIE(InfoExtractor):
 
         # 转换类型/格式化: 把时间戳 (timestamp) 转换成可读的日期格式
         if 'timestamp' in modified_info and modified_info['timestamp']:
-            # 将 1680000000 转为 "2023-03-28 12:00:00"
-            dt_object = datetime.fromtimestamp(modified_info['timestamp'])
-            modified_info['human_readable_time'] = dt_object.strftime("%Y-%m-%d %H:%M:%S")
-        
+            try:
+                dt_object = datetime.fromtimestamp(modified_info['timestamp'])
+                modified_info['human_readable_time'] = dt_object.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+
         # 安全处理频道名，准备输出
         channel = modified_info.get('channel') or modified_info.get('uploader') or 'unknown_channel'
         # 过滤掉文件名中不能出现的字符
