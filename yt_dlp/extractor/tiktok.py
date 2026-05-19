@@ -397,20 +397,34 @@ class TikTokBaseIE(InfoExtractor):
         has_formats = video_info.get('formats') is not None
         extract_flat = self.get_param('extract_flat')
         
-        # yt-dlp 的 extract_flat 固定只有几种状态：
+        # yt-dlp 在不同参数下，extract_flat 可能的值有 True, False, None, 'in_playlist', 'discard_in_playlist'
         # - False 或 None: 默认全量爬取（会先出一次无 formats 的简略版，再出有 formats 的完整版）
         # - True, 'in_playlist', 'discard_in_playlist': 明确要求只要简略版，不需要爬取深层视频
         # 只要是没有 formats，且 extract_flat 不在明确要求浅层提取的状态中，统统丢弃
-        if not has_formats and extract_flat in (False, None):
+        is_shallow_run = extract_flat in (True, 'in_playlist', 'discard_in_playlist') 
+        if not has_formats and not is_shallow_run:
             return
 
+        # 主动检测 archive (下载历史)，实现 break-on-existing 不漏写。
+        # 这里提取出 ID 并且主动向外部请求判断，如果已经被记录在历史中，则阻拦输出操作。
+        if getattr(self, '_downloader', None):
+            info_dict_for_archive = {
+                'id': video_info.get('id'),
+                'extractor_key': TikTokIE.ie_key(),
+            }
+            if self._downloader.in_download_archive(info_dict_for_archive):
+                return
+
         # GUI动态传参支持（不加 ie_key 是最规范的做法，yt-dlp 的继承引擎会自动分发）
-        arg_jsonl = self._configuration_arg('jsonl', default=['True'])[0]
-        arg_csv = self._configuration_arg('csv', default=['True'])[0]
+        # 强制指定 ie_key=TikTokIE，确保即使在 TikTokUserIE 等其它类中，也能读取到 tiktok: 参数
+        arg_jsonl = self._configuration_arg('jsonl', default=['True'], ie_key=TikTokIE)[0]
+        arg_csv = self._configuration_arg('csv', default=['True'], ie_key=TikTokIE)[0]
         OUTPUT_JSONL = str(arg_jsonl).lower() == 'true'
         OUTPUT_CSV = str(arg_csv).lower() == 'true'
-        # --------------------------------------------------
-
+        # 若都关闭，则直接结束
+        if not OUTPUT_JSONL and not OUTPUT_CSV:
+            return
+        
         # 为了不破坏 yt-dlp 本身的运行逻辑，拷贝一份数据用来做自定义处理
         modified_info = copy.deepcopy(video_info)
         
