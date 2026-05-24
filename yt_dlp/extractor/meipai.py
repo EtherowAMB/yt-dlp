@@ -87,12 +87,17 @@ class MeipaiIE(InfoExtractor):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
 
-        # 优先从 og:title 获取，没有的话从 meta description 获取视频文案，最后再用 generic_title 兜底
-        title = (
-            self._og_search_title(webpage, default=None) or
-            self._html_search_meta('description', webpage, 'title', default=None) or
-            self._generic_title('', webpage)
-        )
+        # 从网页中正则匹配 <h1 class="detail-cover-title ..."> 标签里的所有内容
+        title_html = self._html_search_regex(
+            r'<h1[^>]+class=["\'][^"\']*detail-cover-title[^"\']*["\'][^>]*>([\s\S]+?)</h1>',
+            webpage, 'title', default=None)
+        
+        if title_html:
+            # 去除内部可能包含的 HTML 标签（比如你看到的 <span class="emoji..."></span>），并去掉首尾空格换行
+            title = re.sub(r'<[^>]+>', '', title_html).strip()
+        else:
+            # 如果极端情况下没找到，再用废话标题兜底
+            title = self._generic_title('', webpage)
 
         formats = []
 
