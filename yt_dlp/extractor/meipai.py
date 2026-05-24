@@ -260,6 +260,10 @@ class MeipaiUserIE(InfoExtractor):
                 r'<h2[^>]*>\s*([^<]+)\s*</h2>',
                 first_page, 'username', default=user_id)
         )
+        
+        # 核心修改：如果标题以“的美拍”结尾，就裁剪掉最后三个字
+        if title and title.endswith('的美拍'):
+            title = title[:-3]
 
         return self.playlist_result(
             _entries(), playlist_id=user_id, playlist_title=title)
