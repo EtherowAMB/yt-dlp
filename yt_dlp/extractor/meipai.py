@@ -87,7 +87,12 @@ class MeipaiIE(InfoExtractor):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
 
-        title = self._generic_title('', webpage)
+        # 优先从 og:title 获取，没有的话从 meta description 获取视频文案，最后再用 generic_title 兜底
+        title = (
+            self._og_search_title(webpage, default=None) or
+            self._html_search_meta('description', webpage, 'title', default=None) or
+            self._generic_title('', webpage)
+        )
 
         formats = []
 
@@ -130,17 +135,17 @@ class MeipaiIE(InfoExtractor):
                 })
 
         timestamp = unified_timestamp(self._og_search_property(
-            'video:release_date', webpage, 'release date', fatal=False))
+            'video:release_date', webpage, 'release date', default=None))
 
         tags = self._og_search_property(
             'video:tag', webpage, 'tags', default='').split(',')
 
         view_count = int_or_none(self._html_search_meta(
-            'interactionCount', webpage, 'view count'))
+            'interactionCount', webpage, 'view count', default=None))
         duration = parse_duration(self._html_search_meta(
-            'duration', webpage, 'duration'))
+            'duration', webpage, 'duration', default=None))
         creator = self._og_search_property(
-            'video:director', webpage, 'creator', fatal=False)
+            'video:director', webpage, 'creator', default=None)
 
         return {
             'id': video_id,
