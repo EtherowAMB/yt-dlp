@@ -1105,7 +1105,10 @@ from .megatvcom import (
     MegaTVComEmbedIE,
     MegaTVComIE,
 )
-from .meipai import MeipaiIE
+from .meipai import (
+    MeipaiIE,
+    MeipaiUserIE,
+)
 from .melonvod import MelonVODIE
 from .metacritic import MetacriticIE
 from .mgtv import MGTVIE
