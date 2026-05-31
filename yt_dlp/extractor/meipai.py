@@ -47,7 +47,8 @@ def _decode_meipai_url(encoded):
 
 class MeipaiIE(InfoExtractor):
     IE_DESC = '美拍单个视频'
-    _VALID_URL = r'https?://(?:www\.)?meipai\.com/media/(?P<id>[0-9]+)'
+    # _VALID_URL = r'https?://(?:www\.)?meipai\.com/media/(?P<id>[0-9]+)'
+    _VALID_URL = r'https?://(?:www\.)?meipai\.com/(?:media|video/\d+)/(?P<id>\d+)'
     _TESTS = [{
         # regular uploaded video
         'url': 'http://www.meipai.com/media/531697625',
@@ -86,7 +87,7 @@ class MeipaiIE(InfoExtractor):
     def _real_extract(self, url):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
-
+        '''
         # 从网页中正则匹配 <h1 class="detail-cover-title ..."> 标签里的所有内容
         title_html = self._html_search_regex(
             r'<h1[^>]+class=["\'][^"\']*detail-cover-title[^"\']*["\'][^>]*>([\s\S]+?)</h1>',
@@ -97,6 +98,41 @@ class MeipaiIE(InfoExtractor):
             title = re.sub(r'<[^>]+>', '', title_html).strip()
         else:
             # 如果极端情况下没找到，再用废话标题兜底
+            title = self._generic_title('', webpage)
+        '''
+
+        # 先尝试获取正经的标题
+        title_html = self._html_search_regex(
+            r'<h1[^>]+class=["\'][^"\']*detail-cover-title[^"\']*["\'][^>]*>([\s\S]+?)</h1>',
+            webpage, 'title', default=None)
+        
+        title = None
+        if title_html:
+            # 去除内部包含的 HTML 标签，并去掉首尾空格
+            title = re.sub(r'<[^>]+>', '', title_html).strip()
+
+        # 如果正经标题不存在或为空，尝试获取描述 (detail-description)
+        if not title:
+            desc_html = self._html_search_regex(
+                r'<h1[^>]+class=["\'][^"\']*detail-description[^"\']*["\'][^>]*>([\s\S]+?)</h1>',
+                webpage, 'description', default=None)
+            
+            if desc_html:
+                # 去除HTML标签（比如话题链接 <a>）
+                clean_desc = re.sub(r'<[^>]+>', '', desc_html)
+                # 把换行和回车替换成空格，防止文件名断层
+                clean_desc = re.sub(r'[\r\n]+', ' ', clean_desc)
+                # 去除 Windows 不能作为文件名的特殊字符：\ / : * ? " < > |
+                clean_desc = re.sub(r'[\\/:*?"<>|]', '', clean_desc)
+                # 去除首尾空白
+                clean_desc = clean_desc.strip()
+                
+                # 截取前 50 个字符
+                if clean_desc:
+                    title = clean_desc[:50]
+
+        # 如果经过以上处理依然是空（如去除了非法字符后啥也不剩了），再用原程序的废话标题兜底
+        if not title:
             title = self._generic_title('', webpage)
 
         formats = []
