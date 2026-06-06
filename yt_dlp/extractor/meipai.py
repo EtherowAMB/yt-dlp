@@ -1,5 +1,6 @@
 import base64
 import re
+import struct
 
 from .common import InfoExtractor
 from ..utils import (
@@ -84,6 +85,28 @@ class MeipaiIE(InfoExtractor):
         },
     }]
 
+    def _extract_dimensions(self, url, video_id):
+        try:
+            req = self._request_webpage(
+                url, video_id, note='Extracting video dimensions',
+                headers={'Range': 'bytes=0-50000'}, fatal=False)
+            if req:
+                data = req.read()
+                idx = 0
+                while True:
+                    idx = data.find(b'tkhd', idx)
+                    if idx == -1: break
+                    version = data[idx+4]
+                    offset = idx + 8 + (32 if version == 1 else 20) + 16 + 36
+                    w = struct.unpack('>I', data[offset:offset+4])[0] >> 16
+                    h = struct.unpack('>I', data[offset+4:offset+8])[0] >> 16
+                    if w > 0 and h > 0:
+                        return w, h
+                    idx += 4
+        except Exception:
+            pass
+        return None, None
+
     def _real_extract(self, url):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
@@ -146,6 +169,8 @@ class MeipaiIE(InfoExtractor):
                 m3u8_url, video_id, 'mp4', entry_protocol='m3u8_native',
                 m3u8_id='hls', fatal=False))
 
+        width, height = None, None
+
         if not formats:
             # 尝试经过 decodeMp4 混淆的视频地址
             encoded_url = self._search_regex(
@@ -153,9 +178,15 @@ class MeipaiIE(InfoExtractor):
                 webpage, 'encoded video url', group='url', default=None)
             if encoded_url:
                 try:
+                    real_url = _decode_meipai_url(encoded_url)
+                    w, h = self._extract_dimensions(real_url, video_id)
+                    if w and h:
+                        width, height = w, h
                     formats.append({
-                        'url': _decode_meipai_url(encoded_url),
+                        'url': real_url,
                         'format_id': 'http',
+                        'width': width,
+                        'height': height,
                     })
                 except Exception:
                     pass
@@ -170,9 +201,14 @@ class MeipaiIE(InfoExtractor):
                     real_url = _decode_meipai_url(video_url)
                 except Exception:
                     real_url = video_url
+                w, h = self._extract_dimensions(real_url, video_id)
+                if w and h:
+                    width, height = w, h
                 formats.append({
                     'url': real_url,
                     'format_id': 'http',
+                    'width': width,
+                    'height': height,
                 })
 
         timestamp = unified_timestamp(self._og_search_property(
@@ -199,6 +235,8 @@ class MeipaiIE(InfoExtractor):
             'creator': creator,
             'tags': tags,
             'formats': formats,
+            'width': width,
+            'height': height,
         }
 
 
