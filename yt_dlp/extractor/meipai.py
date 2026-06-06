@@ -224,6 +224,10 @@ class MeipaiIE(InfoExtractor):
         creator = self._og_search_property(
             'video:director', webpage, 'creator', default=None)
 
+        aspect_ratio = None
+        if width and height:
+            aspect_ratio = width / height
+
         return {
             'id': video_id,
             'title': title,
@@ -237,6 +241,7 @@ class MeipaiIE(InfoExtractor):
             'formats': formats,
             'width': width,
             'height': height,
+            'aspect_ratio': aspect_ratio,
         }
 
 
