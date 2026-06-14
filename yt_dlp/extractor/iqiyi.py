@@ -357,17 +357,28 @@ class IqiyiIE(InfoExtractor):
         except Exception as e:
             raise ExtractorError('Failed to decode ev: ' + str(e))
 
-        m3u8_content = traverse_obj(ev_data, ('data', 'program', 'video', 2, 'm3u8'))
-        m3u8_base64 = base64.b64encode(m3u8_content.encode('utf-8')).decode('ascii')
-        m3u8_data_url = f'data:application/vnd.apple.mpegurl;base64,{m3u8_base64}'
         title = traverse_obj(download_info, ('videoInfo', 'title'))
 
-        formats = [{
-            'format_id': 'default',
-            'url': m3u8_data_url,
-            'ext': 'mp4',
-            'protocol': 'm3u8_native',
-        }]
+        formats = []
+        # 遍历所有可用的 video 流，而不是写死索引 2
+        for video in traverse_obj(ev_data, ('data', 'program', 'video')) or []:
+            m3u8_content = video.get('m3u8')
+            if not m3u8_content:
+                continue
+            
+            m3u8_base64 = base64.b64encode(m3u8_content.encode('utf-8')).decode('ascii')
+            formats.append({
+                # 动态获取 bid（通常代表清晰度ID），如果没有则留空由yt-dlp自动分配
+                'format_id': str(video.get('bid')) if video.get('bid') else None,
+                'url': f'data:application/vnd.apple.mpegurl;base64,{m3u8_base64}',
+                'ext': 'mp4',
+                'protocol': 'm3u8_native',
+                # 利用 yt-dlp 内置函数自动解析 scrsz (如 '1920x1080') 为 width 和 height
+                **parse_resolution(video.get('scrsz')),
+            })
+
+        if not formats:
+            raise ExtractorError('No m3u8 formats found in video data')
 
         return {
             'id': tvid,
